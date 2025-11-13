@@ -1,0 +1,21 @@
+{
+  "name": "p8-ts-demo",
+  "main": "src/game.ts",
+  "exports": {
+    "default": "./out"
+  },
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "tstp8 --watch"
+  },
+  "dependencies": {
+    "tstp8": "0.0.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
