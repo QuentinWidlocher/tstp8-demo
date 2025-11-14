@@ -10,10 +10,7 @@
     "dev": "tstp8 --watch"
   },
   "dependencies": {
-    "tstp8": "0.0.2"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
+    "tstp8": "^0.2.2"
   },
   "peerDependencies": {
     "typescript": "^5"

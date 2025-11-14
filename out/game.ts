@@ -1,4 +1,4 @@
-
+// Don't import in project, this is injected in the file we transpile to tell tstl about pico8
 
 declare function music(
   this: void,
@@ -52,7 +52,7 @@ declare function line(
   y1: number,
   col?: number
 ): void;
-declare function pal(this: void, c0: Color, c1: Color, p?: number): void;
+declare function pal(this: void, c0: number, c1: number, p?: number): void;
 declare function palt(this: void, col: number, t: boolean): void;
 declare function pget(this: void, x: number, y: number): number;
 declare function print(this: void, str: string): void;
@@ -192,7 +192,7 @@ declare function printh(
 // game.ts
 
  declare function _init(): void;
- declare function _update(): void;
+ declare function _update60(): void;
  declare function _draw(): void;
 
 // game-object/game-object-manager.ts
@@ -201,11 +201,44 @@ declare function printh(
 	static instance: GameObjectManager;
 	static init(debug?: boolean): void;
 	constructor(debug?: boolean);
-	push(this: this, gameObject: GameObject): void;
+	register(gameObjects: GameObject[]): void;
+	push(gameObject: GameObject): void;
 	findGameObject(predicate: (gameObject: GameObject) => boolean): GameObject | undefined;
 	findGameObjects(predicate: (gameObject: GameObject) => boolean): GameObject[];
 	findGameObjectsOfType<T extends GameObject>(instanceOf: T, predicate?: (gameObject: T) => boolean): Array<T>;
 	getGameObject(id: GameObject["id"]): GameObject | undefined;
+}
+
+// score.ts
+
+ declare class Score extends GameObject {
+	score: number;
+	maxScore: number;
+	draw(): void;
+	increment();
+	reset();
+}
+
+// walls.ts
+
+ declare class Walls extends GameObject {
+	private readonly player;
+	rectangles: Rectangle[];
+	width: number;
+	vGap: number;
+	hGap;
+	gapOffset: number;
+	scrollSpeed: number;
+	onWallPassed;
+	onWallTouched;
+	constructor(player: Player);
+	init(): void;
+	reset(): void;
+	update(): void;
+	draw(): void;
+	spawnWall(x: number);
+	spawnNextWall();
+	checkForCollisions(rectangle: Rectangle);
 }
 
 // player.ts
@@ -215,10 +248,48 @@ declare function printh(
 	velocity;
 	jumpForce: number;
 	gravity: number;
-	constructor(position: Vector2, size: Vector2);
+	onDeath;
+	constructor();
+	init(): void;
+	reset(): void;
 	update(): void;
 	draw(): void;
 }
+
+// game-object/game-object.ts
+
+ declare abstract class GameObject {
+	layer: number;
+	id: string;
+	parent: GameObject | null;
+	components: GameObject[];
+	debug: boolean;
+	update(): void;
+	updateDebug(): void;
+	_update(): void;
+	init(): void;
+	initDebug(): void;
+	_init(): void;
+	draw(): void;
+	drawDebug(): void;
+	_draw(): void;
+	protected addComponent<T extends GameObject>(child: T): T;
+	withDebugEnabled(enabled?: boolean): this;
+}
+
+// utils/event.ts
+
+ declare class Event<T = void> {
+	private subscribers;
+	subscribe(callback: (data: T) => void);
+	emit(data: T);
+}
+ type EventPayload<T> = T extends Event<infer U> ? U : never;
+
+// utils/text.ts
+
+ declare function printOutlinedLight(text: string, x: number, y: number, bodyColor?, outlineColor?);
+ declare function printOutlinedBold(text: string, x: number, y: number, bodyColor?, outlineColor?);
 
 // utils/vector2.ts
 
@@ -245,31 +316,8 @@ declare function printh(
 	lerp(other: Vector2, t: number): void;
 	magnitude(): number;
 	normalized(): Vector2;
-}
-
-// game-object/game-object.ts
-
- interface GameObject {
-	id: string;
-	components: GameObject[];
-	update?(): void;
-	init?(): void;
-	draw?(): void;
-	updateDebug?(): void;
-	initDebug?(): void;
-	drawDebug?(): void;
-}
- declare abstract class GameObject {
-	layer: number;
-	id: string;
-	parent: GameObject | null;
-	components: GameObject[];
-	debug: boolean;
-	_update(): void;
-	_init(): void;
-	_draw(): void;
-	protected addComponent<T extends GameObject>(child: T): T;
-	withDebugEnabled(enabled?: boolean): this;
+	reset();
+	toString(): string;
 }
 
 // utils/rectangle.ts
@@ -299,6 +347,8 @@ class GameObject {
   parent = null;
   components = [];
   debug = false;
+  update() {}
+  updateDebug() {}
   _update() {
     this.update?.();
     if (this.debug) {
@@ -308,6 +358,8 @@ class GameObject {
       child._update();
     }
   }
+  init() {}
+  initDebug() {}
   _init() {
     this.init?.();
     if (this.debug) {
@@ -317,6 +369,8 @@ class GameObject {
       child._init();
     }
   }
+  draw() {}
+  drawDebug() {}
   _draw() {
     this.draw?.();
     if (this.debug) {
@@ -347,6 +401,11 @@ class GameObjectManager extends GameObject {
     super();
     this.debug = debug;
   }
+  register(gameObjects) {
+    for (const g of gameObjects) {
+      this.push(g);
+    }
+  }
   push(gameObject) {
     this.addComponent(gameObject);
   }
@@ -363,6 +422,9 @@ class GameObjectManager extends GameObject {
     return this.findGameObject((gameObject) => gameObject.id == id);
   }
 }
+
+// node_modules/tstp8/src/declarations/constants.ts
+var ScreenSize = 128;
 
 // src/utils/rectangle.ts
 class Rectangle {
@@ -459,29 +521,56 @@ class Vector2 {
     const mag = this.magnitude();
     return new Vector2(this.x / mag, this.y / mag);
   }
+  reset() {
+    this.x = 0;
+    this.y = 0;
+  }
+  toString() {
+    return `{ x: ${this.x}, y: ${this.y} }`;
+  }
+}
+
+// src/utils/event.ts
+class Event {
+  subscribers = [];
+  subscribe(callback) {
+    this.subscribers.push(callback);
+  }
+  emit(data) {
+    for (const subscriber of this.subscribers) {
+      subscriber(data);
+    }
+  }
 }
 
 // src/player.ts
 class Player extends GameObject {
   rect;
   velocity = Vector2.zero;
-  jumpForce = 10;
-  gravity = 1;
-  constructor(position, size) {
+  jumpForce = 2;
+  gravity = 0.1;
+  onDeath = new Event;
+  constructor() {
     super();
+  }
+  init() {
+    this.reset();
+  }
+  reset() {
     this.rect = new Rectangle({
-      position,
-      size,
-      color: 12 /* blue */
+      position: new Vector2(10, 10),
+      size: new Vector2(10, 10),
+      color: 10 /* yellow */
     });
+    this.velocity.reset();
   }
   update() {
     this.velocity.subtract(Vector2.multipliedBy(Vector2.down, this.gravity));
-    if (btnp(4 /* O */)) {
-      this.rect.color = 8 /* red */;
+    if (btnp(4 /* O */) || btnp(5 /* X */)) {
       this.velocity.y = -this.jumpForce;
-    } else {
-      this.rect.color = 12 /* blue */;
+    }
+    if (this.rect.position.y + this.rect.size.y < 0 || this.rect.position.y - this.rect.size.y > ScreenSize) {
+      this.onDeath.emit();
     }
     this.rect.position.add(this.velocity);
   }
@@ -490,23 +579,137 @@ class Player extends GameObject {
   }
 }
 
+// src/walls.ts
+class Walls extends GameObject {
+  player;
+  rectangles = [];
+  width = 20;
+  vGap = 10;
+  hGap = ScreenSize;
+  gapOffset = 50;
+  scrollSpeed = 2;
+  onWallPassed = new Event;
+  onWallTouched = new Event;
+  constructor(player) {
+    super();
+    this.player = player;
+  }
+  init() {
+    this.reset();
+  }
+  reset() {
+    this.rectangles = [];
+    this.spawnWall(this.hGap);
+  }
+  update() {
+    this.spawnNextWall();
+    for (const rect2 of this.rectangles) {
+      rect2.position.subtract(Vector2.multipliedBy(Vector2.left, this.scrollSpeed));
+      this.checkForCollisions(rect2);
+    }
+  }
+  draw() {
+    for (const rect2 of this.rectangles) {
+      rect2.draw();
+    }
+  }
+  spawnWall(x) {
+    const gapOffset = rnd(this.gapOffset) - this.gapOffset / 2;
+    this.rectangles.push(new Rectangle({
+      position: Vector2.fromTuple([x, 0]),
+      size: Vector2.fromTuple([this.width, ScreenSize / 4 + gapOffset]),
+      color: 11 /* green */
+    }), new Rectangle({
+      position: Vector2.fromTuple([
+        x,
+        ScreenSize / 2 + gapOffset + this.vGap
+      ]),
+      size: Vector2.fromTuple([
+        this.width,
+        ScreenSize - (ScreenSize / 2 + gapOffset + this.vGap)
+      ]),
+      color: 11 /* green */
+    }));
+  }
+  spawnNextWall() {
+    if (this.rectangles.some((rect2) => rect2.position.x < -this.width)) {
+      this.rectangles.shift();
+      this.rectangles.shift();
+      this.spawnWall(this.hGap);
+      this.onWallPassed.emit();
+    }
+  }
+  checkForCollisions(rectangle) {
+    if (!this.player) {
+      return;
+    }
+    if (rectangle.intersects(this.player.rect)) {
+      this.onWallTouched.emit();
+    }
+  }
+}
+
+// src/utils/text.ts
+function printOutlinedLight(text, x, y, bodyColor = 7 /* white */, outlineColor = 0 /* black */) {
+  print(text, x - 1, y, outlineColor);
+  print(text, x + 1, y, outlineColor);
+  print(text, x, y - 1, outlineColor);
+  print(text, x, y + 1, outlineColor);
+  print(text, x, y, bodyColor);
+}
+function printOutlinedBold(text, x, y, bodyColor = 7 /* white */, outlineColor = 0 /* black */) {
+  print(text, x - 1, y - 1, outlineColor);
+  print(text, x + 1, y + 1, outlineColor);
+  print(text, x + 1, y - 1, outlineColor);
+  print(text, x - 1, y + 1, outlineColor);
+  printOutlinedLight(text, x, y, bodyColor, outlineColor);
+}
+
+// src/score.ts
+class Score extends GameObject {
+  score = 0;
+  maxScore = 0;
+  draw() {
+    printOutlinedBold(`score: ${this.score}`, 5, 5);
+    if (this.maxScore > 0) {
+      printOutlinedBold(`max: ${this.maxScore}`, 5, 13);
+    }
+  }
+  increment() {
+    this.score++;
+  }
+  reset() {
+    this.maxScore = max(this.score, this.maxScore);
+    this.score = 0;
+  }
+}
+
 // src/game.ts
-var player = new Player(new Vector2(10, 10), new Vector2(10, 10));
 function _init() {
   GameObjectManager.init();
-  GameObjectManager.instance.push(player);
+  const player = new Player;
+  const walls = new Walls(player);
+  const score = new Score;
+  function resetGame() {
+    player.reset();
+    walls.reset();
+    score.reset();
+  }
+  walls.onWallPassed.subscribe(() => score.increment());
+  walls.onWallTouched.subscribe(() => resetGame());
+  player.onDeath.subscribe(() => resetGame());
+  GameObjectManager.instance.register([player, walls, score]);
+  GameObjectManager.instance._init();
 }
-function _update() {
+function _update60() {
   GameObjectManager.instance._update();
 }
 function _draw() {
-  cls();
+  cls(12 /* blue */);
   GameObjectManager.instance._draw();
 }
  {
-  _update,
+  _update60,
   _init,
   _draw
 };
-
-    

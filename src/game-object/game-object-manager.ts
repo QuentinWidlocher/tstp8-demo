@@ -12,7 +12,13 @@ export class GameObjectManager extends GameObject {
     this.debug = debug;
   }
 
-  push(this: this, gameObject: GameObject): void {
+  register(gameObjects: GameObject[]): void {
+    for (const g of gameObjects) {
+      this.push(g);
+    }
+  }
+
+  push(gameObject: GameObject): void {
     this.addComponent(gameObject);
   }
 

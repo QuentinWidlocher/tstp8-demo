@@ -1,4 +1,4 @@
-export class Event<T> {
+export class Event<T = void> {
   private subscribers: ((data: T) => void)[] = [];
 
   public subscribe(callback: (data: T) => void) {

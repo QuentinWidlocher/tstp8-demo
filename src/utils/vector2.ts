@@ -70,4 +70,13 @@ export class Vector2 {
     const mag = this.magnitude();
     return new Vector2(this.x / mag, this.y / mag);
   }
+
+  reset() {
+    this.x = 0;
+    this.y = 0;
+  }
+
+  toString() {
+    return `{ x: ${this.x}, y: ${this.y} }`;
+  }
 }

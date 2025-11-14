@@ -37,18 +37,6 @@ local function __TS__New(target, ...)
     return instance
 end
 
-local function __TS__ArrayFilter(self, callbackfn, thisArg)
-    local result = {}
-    local len = 0
-    for i = 1, #self do
-        if callbackfn(thisArg, self[i], i - 1, self) then
-            len = len + 1
-            result[len] = self[i]
-        end
-    end
-    return result
-end
-
 local __TS__Symbol, Symbol
 do
     local symbolMetatable = {__tostring = function(self)
@@ -65,6 +53,59 @@ do
         species = __TS__Symbol("Symbol.species"),
         toStringTag = __TS__Symbol("Symbol.toStringTag")
     }
+end
+
+local __TS__Iterator
+do
+    local function iteratorGeneratorStep(self)
+        local co = self.____coroutine
+        local status, value = coroutine.resume(co)
+        if not status then
+            error(value, 0)
+        end
+        if coroutine.status(co) == "dead" then
+            return
+        end
+        return true, value
+    end
+    local function iteratorIteratorStep(self)
+        local result = self:next()
+        if result.done then
+            return
+        end
+        return true, result.value
+    end
+    local function iteratorStringStep(self, index)
+        index = index + 1
+        if index > #self then
+            return
+        end
+        return index, string.sub(self, index, index)
+    end
+    function __TS__Iterator(iterable)
+        if type(iterable) == "string" then
+            return iteratorStringStep, iterable, 0
+        elseif iterable.____coroutine ~= nil then
+            return iteratorGeneratorStep, iterable
+        elseif iterable[Symbol.iterator] then
+            local iterator = iterable[Symbol.iterator](iterable)
+            return iteratorIteratorStep, iterator
+        else
+            return ipairs(iterable)
+        end
+    end
+end
+
+local function __TS__ArrayFilter(self, callbackfn, thisArg)
+    local result = {}
+    local len = 0
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            len = len + 1
+            result[len] = self[i]
+        end
+    end
+    return result
 end
 
 local function __TS__InstanceOf(obj, classTbl)
@@ -85,6 +126,25 @@ local function __TS__InstanceOf(obj, classTbl)
     end
     return false
 end
+
+local function __TS__ArrayPush(self, ...)
+    local items = {...}
+    local len = #self
+    for i = 1, #items do
+        len = len + 1
+        self[len] = items[i]
+    end
+    return len
+end
+
+local function __TS__ArraySome(self, callbackfn, thisArg)
+    for i = 1, #self do
+        if callbackfn(thisArg, self[i], i - 1, self) then
+            return true
+        end
+    end
+    return false
+end
 -- End of Lua Library inline imports
 local GameObject = __TS__Class()
 GameObject.name = "GameObject"
@@ -94,6 +154,10 @@ function GameObject.prototype.____constructor(self)
     self.parent = nil
     self.components = {}
     self.debug = false
+end
+function GameObject.prototype.update(self)
+end
+function GameObject.prototype.updateDebug(self)
 end
 function GameObject.prototype._update(self)
     local ____opt_0 = self.update
@@ -110,6 +174,10 @@ function GameObject.prototype._update(self)
         child:_update()
     end
 end
+function GameObject.prototype.init(self)
+end
+function GameObject.prototype.initDebug(self)
+end
 function GameObject.prototype._init(self)
     local ____opt_4 = self.init
     if ____opt_4 ~= nil then
@@ -124,6 +192,10 @@ function GameObject.prototype._init(self)
     for ____, child in ipairs(self.components) do
         child:_init()
     end
+end
+function GameObject.prototype.draw(self)
+end
+function GameObject.prototype.drawDebug(self)
 end
 function GameObject.prototype._draw(self)
     local ____opt_8 = self.draw
@@ -169,6 +241,11 @@ function GameObjectManager.init(self, ____debug)
     end
     GameObjectManager.instance = __TS__New(GameObjectManager, ____debug)
 end
+function GameObjectManager.prototype.register(self, gameObjects)
+    for ____, g in __TS__Iterator(gameObjects) do
+        self:push(g)
+    end
+end
 function GameObjectManager.prototype.push(self, gameObject)
     self:addComponent(gameObject)
 end
@@ -204,6 +281,7 @@ end
 function GameObjectManager.prototype.getGameObject(self, id)
     return self:findGameObject(function(____, gameObject) return gameObject.id == id end)
 end
+local ScreenSize = 128
 local Rectangle = __TS__Class()
 Rectangle.name = "Rectangle"
 function Rectangle.prototype.____constructor(self, ____bindingPattern0)
@@ -313,54 +391,235 @@ function Vector2.prototype.normalized(self)
     local mag = self:magnitude()
     return __TS__New(Vector2, self.x / mag, self.y / mag)
 end
+function Vector2.prototype.reset(self)
+    self.x = 0
+    self.y = 0
+end
+function Vector2.prototype.__tostring(self)
+    return ((("{ x: " .. tostring(self.x)) .. ", y: ") .. tostring(self.y)) .. " }"
+end
 Vector2.zero = __TS__New(Vector2, 0, 0)
 Vector2.up = __TS__New(Vector2, 0, 1)
 Vector2.down = __TS__New(Vector2, 0, -1)
 Vector2.left = __TS__New(Vector2, 1, 0)
 Vector2.right = __TS__New(Vector2, -1, 0)
+local Event = __TS__Class()
+Event.name = "Event"
+function Event.prototype.____constructor(self)
+    self.subscribers = {}
+end
+function Event.prototype.subscribe(self, callback)
+    local ____self_subscribers_18 = self.subscribers
+    ____self_subscribers_18[#____self_subscribers_18 + 1] = callback
+end
+function Event.prototype.emit(self, data)
+    for ____, subscriber in ipairs(self.subscribers) do
+        subscriber(_G, data)
+    end
+end
 local Player = __TS__Class()
 Player.name = "Player"
 __TS__ClassExtends(Player, GameObject)
-function Player.prototype.____constructor(self, position, size)
+function Player.prototype.____constructor(self)
     GameObject.prototype.____constructor(self)
     self.velocity = Vector2.zero
-    self.jumpForce = 10
-    self.gravity = 1
-    self.rect = __TS__New(Rectangle, {position = position, size = size, color = 12})
+    self.jumpForce = 2
+    self.gravity = 0.1
+    self.onDeath = __TS__New(Event)
+end
+function Player.prototype.init(self)
+    self:reset()
+end
+function Player.prototype.reset(self)
+    self.rect = __TS__New(
+        Rectangle,
+        {
+            position = __TS__New(Vector2, 10, 10),
+            size = __TS__New(Vector2, 10, 10),
+            color = 10
+        }
+    )
+    self.velocity:reset()
 end
 function Player.prototype.update(self)
     self.velocity:subtract(Vector2:multipliedBy(Vector2.down, self.gravity))
-    if btnp(4) then
-        self.rect.color = 8
+    if btnp(4) or btnp(5) then
         self.velocity.y = -self.jumpForce
-    else
-        self.rect.color = 12
+    end
+    if self.rect.position.y + self.rect.size.y < 0 or self.rect.position.y - self.rect.size.y > ScreenSize then
+        self.onDeath:emit()
     end
     self.rect.position:add(self.velocity)
 end
 function Player.prototype.draw(self)
     self.rect:draw()
 end
-local player = __TS__New(
-    Player,
-    __TS__New(Vector2, 10, 10),
-    __TS__New(Vector2, 10, 10)
-)
+local Walls = __TS__Class()
+Walls.name = "Walls"
+__TS__ClassExtends(Walls, GameObject)
+function Walls.prototype.____constructor(self, player)
+    GameObject.prototype.____constructor(self)
+    self.rectangles = {}
+    self.width = 20
+    self.vGap = 10
+    self.hGap = ScreenSize
+    self.gapOffset = 50
+    self.scrollSpeed = 2
+    self.onWallPassed = __TS__New(Event)
+    self.onWallTouched = __TS__New(Event)
+    self.player = player
+end
+function Walls.prototype.init(self)
+    self:reset()
+end
+function Walls.prototype.reset(self)
+    self.rectangles = {}
+    self:spawnWall(self.hGap)
+end
+function Walls.prototype.update(self)
+    self:spawnNextWall()
+    for ____, rect2 in ipairs(self.rectangles) do
+        rect2.position:subtract(Vector2:multipliedBy(Vector2.left, self.scrollSpeed))
+        self:checkForCollisions(rect2)
+    end
+end
+function Walls.prototype.draw(self)
+    for ____, rect2 in ipairs(self.rectangles) do
+        rect2:draw()
+    end
+end
+function Walls.prototype.spawnWall(self, x)
+    local gapOffset = rnd(self.gapOffset) - self.gapOffset / 2
+    __TS__ArrayPush(
+        self.rectangles,
+        __TS__New(
+            Rectangle,
+            {
+                position = Vector2:fromTuple({x, 0}),
+                size = Vector2:fromTuple({self.width, ScreenSize / 4 + gapOffset}),
+                color = 11
+            }
+        ),
+        __TS__New(
+            Rectangle,
+            {
+                position = Vector2:fromTuple({x, ScreenSize / 2 + gapOffset + self.vGap}),
+                size = Vector2:fromTuple({self.width, ScreenSize - (ScreenSize / 2 + gapOffset + self.vGap)}),
+                color = 11
+            }
+        )
+    )
+end
+function Walls.prototype.spawnNextWall(self)
+    if __TS__ArraySome(
+        self.rectangles,
+        function(____, rect2) return rect2.position.x < -self.width end
+    ) then
+        deli(self.rectangles, 1)
+        deli(self.rectangles, 1)
+        self:spawnWall(self.hGap)
+        self.onWallPassed:emit()
+    end
+end
+function Walls.prototype.checkForCollisions(self, rectangle)
+    if not self.player then
+        return
+    end
+    if rectangle:intersects(self.player.rect) then
+        self.onWallTouched:emit()
+    end
+end
+local function printOutlinedLight(self, text, x, y, bodyColor, outlineColor)
+    if bodyColor == nil then
+        bodyColor = 7
+    end
+    if outlineColor == nil then
+        outlineColor = 0
+    end
+    print(text, x - 1, y, outlineColor)
+    print(text, x + 1, y, outlineColor)
+    print(text, x, y - 1, outlineColor)
+    print(text, x, y + 1, outlineColor)
+    print(text, x, y, bodyColor)
+end
+local function printOutlinedBold(self, text, x, y, bodyColor, outlineColor)
+    if bodyColor == nil then
+        bodyColor = 7
+    end
+    if outlineColor == nil then
+        outlineColor = 0
+    end
+    print(text, x - 1, y - 1, outlineColor)
+    print(text, x + 1, y + 1, outlineColor)
+    print(text, x + 1, y - 1, outlineColor)
+    print(text, x - 1, y + 1, outlineColor)
+    printOutlinedLight(
+        _G,
+        text,
+        x,
+        y,
+        bodyColor,
+        outlineColor
+    )
+end
+local Score = __TS__Class()
+Score.name = "Score"
+__TS__ClassExtends(Score, GameObject)
+function Score.prototype.____constructor(self, ...)
+    GameObject.prototype.____constructor(self, ...)
+    self.score = 0
+    self.maxScore = 0
+end
+function Score.prototype.draw(self)
+    printOutlinedBold(
+        _G,
+        "score: " .. tostring(self.score),
+        5,
+        5
+    )
+    if self.maxScore > 0 then
+        printOutlinedBold(
+            _G,
+            "max: " .. tostring(self.maxScore),
+            5,
+            13
+        )
+    end
+end
+function Score.prototype.increment(self)
+    self.score = self.score + 1
+end
+function Score.prototype.reset(self)
+    self.maxScore = max(self.score, self.maxScore)
+    self.score = 0
+end
 local function _init(self)
     GameObjectManager:init()
-    GameObjectManager.instance:push(player)
+    local player = __TS__New(Player)
+    local walls = __TS__New(Walls, player)
+    local score = __TS__New(Score)
+    local function resetGame(self)
+        player:reset()
+        walls:reset()
+        score:reset()
+    end
+    walls.onWallPassed:subscribe(function() return score:increment() end)
+    walls.onWallTouched:subscribe(function() return resetGame(_G) end)
+    player.onDeath:subscribe(function() return resetGame(_G) end)
+    GameObjectManager.instance:register({player, walls, score})
+    GameObjectManager.instance:_init()
 end
-local function _update(self)
+local function _update60(self)
     GameObjectManager.instance:_update()
 end
 local function _draw(self)
-    cls()
+    cls(12)
     GameObjectManager.instance:_draw()
 end
 do
     do
         do
-            local ____ = _update
+            local ____ = _update60
             local ____ = _init
         end
         local ____ = _draw

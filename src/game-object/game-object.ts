@@ -1,16 +1,3 @@
-export interface GameObject {
-  id: string;
-  components: GameObject[];
-
-  update?(): void;
-  init?(): void;
-  draw?(): void;
-
-  updateDebug?(): void;
-  initDebug?(): void;
-  drawDebug?(): void;
-}
-
 export abstract class GameObject {
   layer = 0;
   id = `${rnd(1000)}`;
@@ -19,6 +6,8 @@ export abstract class GameObject {
 
   debug = false;
 
+  update(): void {}
+  updateDebug(): void {}
   _update(): void {
     this.update?.();
 
@@ -31,6 +20,8 @@ export abstract class GameObject {
     }
   }
 
+  init(): void {}
+  initDebug(): void {}
   _init(): void {
     this.init?.();
 
@@ -43,6 +34,8 @@ export abstract class GameObject {
     }
   }
 
+  draw(): void {}
+  drawDebug(): void {}
   _draw(): void {
     this.draw?.();
     if (this.debug) {
